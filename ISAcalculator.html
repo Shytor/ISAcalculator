@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ISA Calculator - codeandcompose.com</title>
+	<style text="style/css">
+		input[type=number] {
+				border-radius: 4px;
+				border: 1px solid #ddd;
+				margin: 4px;
+		}
+		input[type=number]::-webkit-inner-spin-button, 
+		input[type=number]::-webkit-outer-spin-button { 
+				-webkit-appearance: none; 
+		}
+		.left {
+			margin-left: 3%;
+			position: relative;
+			float: left;
+		}
+		.right {
+			margin-right: 3%;
+			position: relative;
+			float: right;
+		}
+		.calc {
+			width: 338px;
+		}
+		.input-sec {
+			background: #F6F6F6;
+			border-radius: 8px;
+			padding-left: 8px;
+			padding-bottom: 8px;
+			margin: 4px;
+		}
+		.output-sec {
+			background: #F6F6F6;
+			border-radius: 8px;
+			padding-left: 8px;
+			padding-bottom: 8px;
+			margin: 4px;
+		}
+		h3 {
+			padding-top: 8px;
+		}
+		a {
+			color: #4080CC;
+			position: relative;
+		}
+		a:link {
+			text-decoration: none;
+		}
+		a:visited {
+			text-decoration: none;
+		}
+		a:hover {
+			text-decoration: underline;
+		}
+		ul {
+			list-style-type: none;
+			padding: 0px;
+			margin: 8px;
+		}
+		ul.articles > li {
+			position: relative;
+			padding: 2px;
+			margin-left: 24px;
+			background: #F6F6F6;
+			border-radius: 4px;
+			width: 500px;
+		}
+	</style>
+	<script src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" type="text/javascript"></script>
+	<script type="text/javascript">
+		//Copyright 2015 Trevor Gast: codeandcompose.com
+		//ISA international Standard Atmosphere calculator and graph version 2.0 (2 December 2015)
+		//GNU General Public License
+		//This program is free software: you can redistribute it and/or modify
+    	//it under the terms of the GNU General Public License as published by
+		//the Free Software Foundation, either version 3 of the License, or
+		//(at your option) any later version.
+		//
+		//This program is distributed in the hope that it will be useful,
+		//but WITHOUT ANY WARRANTY; without even the implied warranty of
+		//MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+		//GNU General Public License for more details.
+
+		//You should have received a copy of the GNU General Public License
+		//along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+		var ctx; //global context for the graph canvas
+		var densCurve = []; //array for x values
+		var pressCurve = [];
+		var useLog = false;
+		var loaded = false;
+		var prevTempUnits = "K";
+		var prevAltUnits = "m";
+	
+		// constants!
+		var R = 287.053;
+		//var RsISA = (28.0134*0.78084)+(31.9988*0.209476)+(39.948*0.00934)+(44.00995*0.000314)+(20.183*0.00001818)+(4.0026*0.00000524)+(83.8*0.00000114)+(131.3*0.000000087)+(16.04303*0.000002)+(2.01594*0.0000005);
+		//gas constant R* = 8.31432
+		//console.log(RsISA); //short 0.000002853 ?
+		//287.05282152059 or 287.05200256122 (adjusted so total fractions of molecular mass = 1)
+		//other values obtained from other "sources"
+		var Rarr = [286.9,287,287.04,287.052,287.053,287.058];
+		var TEMP = 288.15;
+		var ATM1 = 101325;
+		var DENSITY = 1.225;
+		var earthRadius = 6356766;
+		var Earr = [6356766,6371000,6378137,6356752.3]; //ISA constant, mean, equatorial, polar
+		var g = 9.80665;
+		var SoS = 0;
+		//var G = ??;
+		//table of molecular weight ratios at 80000 to 86000 m geometric altitude (500 m per ratio) 
+		var table8 = [1.0,0.999996,0.999989,0.999971,0.999941,0.999909,0.99987,0.999829,0.999786,0.999741,0.999694,0.999641,0.999579];
+	
+		$(document).ready(function(){
+			$(".input").keyup(function() {
+				//get the inputs and pass them to...
+				var value = parseFloat($(this).val());
+				var To = $("#tempOffset").val();
+				//make sure it is a number value...?
+				if (isNaN(value)) return; //do nothing for non-numbers FIX ME when adding other inputs!?
+				To = parseFloat(To);
+				if (isNaN(To)) To = 0; //coerce To to number or 0
+
+				To = convertUnits(To,$("#tempUnits option:selected").val(),"K");
+				
+				var valID = $(this).attr("id");
+				switch (valID) {
+					case "altitude":
+							value = convertUnits(value,$("#altUnits option:selected").val(),"m");
+							var ATM = getAtmosphere(value,To);
+							drawOutput(ATM);
+							break;
+					case "temp":
+							drawOutput({"alt":0,"T":288.15,"To":0,"p":101325,"rho":1.225,"ga":0,"grav":9.80665});
+							//getAltitudes(To,value,null,null);
+							break;
+					case "density":
+							var altGuess = getAltitude(null,value,To);
+							var ATM = getAtmosphere(altGuess,To);
+							drawOutput(ATM);
+							break;
+					case "pressure":
+							var altGuess = getAltitude(value,null,To);
+							var ATM = getAtmosphere(altGuess,To);
+							drawOutput(ATM);
+							break;
+					default :
+							drawOutput({"alt":0,"T":288.15,"To":0,"p":101325,"rho":1.225,"ga":0,"grav":9.80665});
+							return;
+				}
+
+  				//clear other inputs to avoid confusion
+  				var thing = $(this).attr("id");
+  				$( ".input").each(function(index) {
+  					if ($(this).attr("id") != thing) $(this).val("");
+				});
+  			});
+  			$("#tempOffset").keyup(function() {
+				//get the inputs and pass them to...
+				var To = $(this).val();
+				//make sure it is a number value... 
+				To = parseFloat(To);
+				if (isNaN(To)) To = 0; //coerce To to number or 0
+				//convert the units
+				To = convertUnits(To,$("#tempUnits option:selected").val(),"K");
+				//check other inputs...
+				if ($.isNumeric($("#altitude").val())) {
+					var altVal = parseFloat($("#altitude").val());
+					altVal = convertUnits(altVal,$("#altUnits option:selected").val(),"m");
+				} else var altVal = null;
+				if (!altVal) {
+					if (parseFloat($("#density").val())) altVal = getAltitude(null,parseFloat($("#density").val()),To);
+					if (parseFloat($("#pressure").val())) altVal = getAltitude(parseFloat($("#pressure").val()),null,To);
+				}
+				//draw the output
+				var ATM = getAtmosphere(altVal,To);
+				//before drawing recalculate the density curve
+				//////
+				//call getAtmosphere in loop to recreate array for density curve
+					for (var a = 0; a<=900; a++){
+						var xATM = getAtmosphere(a*100,To);
+						densCurve[a] = xATM.rho;
+					}
+				///////
+				drawOutput(ATM);
+  			});
+  			//change scale of canvas (toggle logarithmic)
+  			$("#log").click(function() {
+  				//toggle log scale
+  				useLog = !useLog;
+  				if (!useLog) $(this).html("log10 scale");
+  				else $(this).html("normal scale");
+  				var inp = getInput();
+				var ATM = getAtmosphere(inp.alt,inp.To);
+				drawOutput(ATM);
+  			});
+  			//toggle constant for R
+  			$(".Rc").click(function() {
+				for (var r = Rarr.length-1;r>=0;r--){
+					if (R === Rarr[r]){
+						if (r <= Rarr.length-2) {
+							R = Rarr[r+1];
+							$(this).text(R);
+							break;
+						} else {
+							R =  Rarr[0];
+							$(this).text(R);
+							break;
+						}
+					}
+				}
+				var inp = getInput();
+				var ATM = getAtmosphere(inp.alt,inp.To);
+				drawOutput(ATM);
+			});
+			//toggle constant for earth radius
+  			$("#ERc").click(function() {
+				for (var r = Earr.length-1;r>=0;r--){
+					if (earthRadius === Earr[r]){
+						if (r <= Earr.length-2) {
+							earthRadius = Earr[r+1];
+							$(this).text((earthRadius/1000).toFixed(1));
+							break;
+						} else {
+							earthRadius =  Earr[0];
+							$(this).text((earthRadius/1000).toFixed(1));
+							break;
+						}
+					}
+				}
+				var inp = getInput();
+				var ATM = getAtmosphere(inp.alt,inp.To);
+				drawOutput(ATM);
+			});
+			//change a unit menu
+			$(".Units").change(function() {
+				//convert the input in that particular input field (not needed for output)
+				if ($(this).attr("id") === "tempUnits" || $(this).attr("id") === "altUnits") {
+					//convert both from previous units (if it's the same, no change
+					var To = parseFloat($("#tempOffset").val());
+					if (!isNaN(To)) var newTemp = convertUnits(To,prevTempUnits,$("#tempUnits option:selected").val());
+					//if ($.isNumeric($("#altitude").val())) var newAlt = convertUnits($("#altitude").val(),prevAltUnits,$("#altUnits option:selected").val());
+					var altVal = parseFloat($("#altitude").val());
+					if (!isNaN(altVal)) var newAlt = convertUnits($("#altitude").val(),prevAltUnits,$("#altUnits option:selected").val());
+					//change the previous indicators
+					prevTempUnits = $("#tempUnits option:selected").val();
+					prevAltUnits = $("#altUnits option:selected").val();
+					//change the indicated nalues
+					console.log(newAlt);
+					if (newTemp || newTemp === 0) $("#tempOffset").val(parseFloat(newTemp.toFixed(9))); //rounding to help with error
+					if (newAlt || newAlt === 0) $("#altitude").val(parseFloat(newAlt.toFixed(9))); //rounding to help with error
+				}
+				//get input, convert and redraw
+				var inp = getInput();
+				var ATM = getAtmosphere(inp.alt,inp.To);
+				drawOutput(ATM);
+			});
+  			
+  			//////////////////////////
+  			//initialize after loading
+  			var canvas = document.getElementById("graph");
+  			ctx = canvas.getContext('2d');
+  			canvas.height = 960; //bottom margin of 100 then 1 pixel = 100 meters
+  			canvas.width = 500;
+  			var canvas2 = document.getElementById("graph2");
+  			ctx2 = canvas2.getContext('2d');
+  			canvas2.height = 500; //bottom margin of 100 then 1 pixel = 100 meters
+  			canvas2.width = 1000;
+  			document.getElementById("graph").onmousedown = canvasClick;
+  			document.getElementById("graph2").onmousedown = canvas2Click;
+  			drawCanvas2();
+  			//call getAtmosphere in loop to create arrays for density and pressure curve
+			if (loaded === false) {
+				for (var a = 0; a<=900; a++){
+					ATM = getAtmosphere(a*100,0);
+					densCurve[a] = ATM.rho;
+					pressCurve[a] = ATM.p;
+				}
+				loaded = true;
+				console.log("curves loaded");
+			}
+  			drawOutput({"alt":0,"T":288.15,"To":0,"p":101325,"rho":1.225,"ga":0,"grav":9.80665});
+		});
+		
+		function getInput() {
+				//get temp offset and make sure it is a number
+				var To = $("#tempOffset").val();
+				To = parseFloat(To);
+				if (isNaN(To)) To = 0; //coerce To to number or 0
+				//convert the units
+				To = convertUnits(To,$("#tempUnits option:selected").val(),"K");
+				//check inputs for altitude
+				if ($.isNumeric($("#altitude").val())) {
+					var altVal = parseFloat($("#altitude").val());
+					altVal = convertUnits(altVal,$("#altUnits option:selected").val(),"m");
+				} else var altVal = null;
+				if (!altVal) {
+					if (parseFloat($("#density").val())) altVal = getAltitude(null,parseFloat($("#density").val()),To);
+					if (parseFloat($("#pressure").val())) altVal = getAltitude(parseFloat($("#pressure").val()),null,To);
+				}
+				return {"To":To,"alt":altVal};
+		}
+		
+		function canvasClick(event){
+			event = event || window.event;
+			var clickY = event.pageY - $(this).offset().top;
+			if (clickY > 900) return;
+			clickY = Math.round(clickY);
+			//convert click to altitude in correct unit
+			$("#altitude").val(convertUnits((900 - clickY)*100,"m",$("#altUnits option:selected").val()));
+			//clear other fields to avoid confusion
+			$( ".input").each(function(index) {
+				if ($(this).attr("id") != "altitude") $(this).val("");
+			});
+			//get input, convert and redraw
+			var inp = getInput();
+			var ATM = getAtmosphere((900 - clickY)*100,inp.To);
+			drawOutput(ATM);
+		}
+		
+		function canvas2Click(event){
+			event = event || window.event;
+			var clickY = event.pageY - $(this).offset().top;
+			if (clickY > 500) return;
+			clickY = Math.round(clickY);
+			//convert from geometric altitude to geopotential
+			var gpAlt = earthRadius*((500-clickY)*2000)/(earthRadius + ((500-clickY)*2000));
+			//convert click to altitude in correct unit
+			$("#altitude").val(convertUnits(gpAlt,"m",$("#altUnits option:selected").val()));
+			//clear other fields to avoid confusion
+			$( ".input").each(function(index) {
+				if ($(this).attr("id") != "altitude") $(this).val("");
+			});
+			if (gpAlt > 90000) {
+				var ATM = getAtmosphere(gpAlt,0);
+				drawOutput(ATM);
+			} else {
+				//get input, convert and redraw
+				var inp = getInput();
+				var ATM = getAtmosphere(gpAlt,inp.To);
+				drawOutput(ATM);
+			}
+		}
+		
+		function getStandardAtmosphere(alt,To) {
+			//sanity check on the offset
+			//To = parseFloat(To);
+			//if (isNaN(To)) To = 0;
+			
+			// calc for sea level
+			if (!alt) { //sea level or no altitude entered 0 = false
+				return {"alt":0,"T":TEMP,"To":To,"p":ATM1,"rho":DENSITY,"ga":0,"grav":9.80665};
+			} 
+
+			var atm0 = getStandardAtmosphere(getAltRange(alt),To);
+			
+			if (lapseRate(alt) != 0) {
+				var T1 = atm0.T + lapseRate(alt)*(alt-getAltRange(alt));
+				var rho1 = atm0.rho*Math.pow(T1/atm0.T,(-g/(lapseRate(alt)*R)-1));
+				var p1 = atm0.p*Math.pow(T1/atm0.T,-g/(lapseRate(alt)*R)); 
+			} else { // lapseRate = 0
+				var con = Math.pow(Math.E,-g/(R*atm0.T)*(alt-getAltRange(alt)));
+				var T1 = atm0.T;
+				var p1 = atm0.p * con;
+				var rho1 = atm0.rho * con;
+			}
+			var gAlt = earthRadius*alt/(earthRadius-alt); //geometric altitude (true height above sea level)
+			var grav = Math.pow(earthRadius/(earthRadius+gAlt),2)*g;
+			return {"alt":alt,"T":T1,"To":To,"p":p1,"rho":rho1,"ga":gAlt,"grav":grav};
+		}
+		
+		function getHeterosphere(alt) {
+			var gAlt = earthRadius*alt/(earthRadius-alt); //geometric altitude (true height above sea level)
+			//range check
+			if (gAlt > 1000000) {
+				gAlt = 1000000;
+				alt = earthRadius*gAlt/(earthRadius + gAlt);
+			}
+			var grav = Math.pow(earthRadius/(earthRadius+gAlt),2)*g;
+			// if then for each layer to get Temp
+			if (gAlt > 85999.9 && gAlt <= 91000) { //a little extra inclusive
+				var T = 186.8673;
+			} else if (gAlt > 91000 && gAlt <= 110000) {
+				var T = 263.1905 + -76.3232 * Math.sqrt(1-Math.pow(((gAlt/1000)-91)/-19.9429,2));
+			} else if (gAlt > 110000 && gAlt <= 120000) {
+				var T = (gAlt - 110000) * 0.012 + 240;
+			} else if (gAlt > 120000 && gAlt <= 1000000) {
+				var T = 1000 - ((1000-360)*Math.exp(-0.01875*((gAlt/1000)-120)*((earthRadius+120)/(earthRadius+(gAlt/1000)))));
+			}
+			//get pressure
+			//get density
+			return {"alt":alt,"T":T,"To":0,"p":0,"rho":0,"ga":gAlt,"grav":grav};
+		}
+		
+		function getAtmosphere(alt,To) { //input is geopotential altitude
+			//range check
+			if (alt < -610) alt = -610; //minimum below sea level... per ISA should go to -5000?
+			if (alt > 84852) var atm = getHeterosphere(alt);
+			else var atm = getStandardAtmosphere(alt,To);
+			//take relative values and correct density for temperature offset
+			if (atm.rho > 0) atm.rho = atm.rho*atm.T/(atm.T+atm.To);
+			//correct temperature with offset
+			atm.T = atm.T + atm.To;
+			//correct molecular scale temperatures between 80000 and 86000 (geometric altitude)
+			if (atm.ga > 80000 && atm.ga < 86000) {
+				var ind = Math.floor((atm.ga - 80000) / 500); // get table index for lower bound
+				var weight = (atm.ga - 80000 - (ind*500)) / 500;
+				atm.T = atm.T * (((1-weight)*table8[ind]) + (weight*table8[ind+1]));
+			}
+			return atm;
+		}
+		
+		function lapseRate(alt) {
+			if (alt < -610) return; //below sea level
+			if (alt <= 11000) return -0.0065; //troposphere
+			else if (alt <= 20000) return 0; //tropopause
+			else if (alt <= 32000) return 0.001; //stratosphere
+			else if (alt <= 47000) return 0.0028; //stratosphere
+			else if (alt <= 51000) return 0; //stratopause
+			else if (alt <= 71000) return -0.0028; //mesosphere
+			else if (alt <= 84852) return -0.002; //mesosphere
+			else if (alt > 84852) return 0; //mesopause
+		}
+		
+		/*//lapse rates actual per 1976 USSA
+		alt		T			lapse rate
+		84852	186.8673	0		
+		91000	T = 263.1905 + -76.3232 * Math.sqrt(1-Math.pow((h1-91)/-19.9429,2)) //for 91000 to 110000 only
+		110000	240			12
+		120000	360			T = 1000 - ((1000-360)*Math.exp(-0.01875*(h-120)*((earthRadius+120)/(earthRadius+h))))
+		1000000	1000 (limit)
+		*/
+		//console.log(263.1905 + -76.3232 * Math.sqrt(1 - Math.pow(19/19.9429,2))); //about 240
+		//console.log((76.3232/-19.9429)*(19/-19.9429)/Math.sqrt(1 - Math.pow(19/19.9429,2))); //about 12
+		
+		function getAltRange(alt) {
+			if (alt < -610) return; //below sea level
+			if (alt <= 11000) return 0; //troposphere
+			else if (alt <= 20000) return 11000; //tropopause
+			else if (alt <= 32000) return 20000; //stratosphere
+			else if (alt <= 47000) return 32000; //stratosphere
+			else if (alt <= 51000) return 47000; //stratopause
+			else if (alt <= 71000) return 51000; //mesosphere
+			else if (alt <= 84852) return 71000; //mesosphere //mesopause at 84852?
+			else if (alt > 84852) return 84852; //mesopause
+		}
+		
+		function nextLapseRate(alt) {
+			if (alt < -610) return; //below sea level
+			if (alt < 11000) return -0.0065; //troposphere
+			else if (alt < 20000) return 0; //tropopause
+			else if (alt < 32000) return 0.001; //stratosphere
+			else if (alt < 47000) return 0.0028; //stratosphere
+			else if (alt < 51000) return 0; //stratopause
+			else if (alt < 71000) return -0.0028; //mesosphere
+			else if (alt < 84852) return -0.002; //mesosphere
+			else if (alt >= 84852) return 0; //mesopause
+		}
+		
+		function getNextAltRange(alt) {
+			if (alt < -610) return; //below sea level
+			if (alt < 11000) return 11000; //troposphere
+			else if (alt < 20000) return 20000; //tropopause
+			else if (alt < 32000) return 32000; //stratosphere
+			else if (alt < 47000) return 47000; //stratosphere
+			else if (alt < 51000) return 51000; //stratopause
+			else if (alt < 71000) return 71000; //mesosphere
+			else if (alt < 84852) return 84852; //mesopause
+			else if (alt < 90000) return 90000; //top of chart
+			else if (alt >= 90000) return 90001;
+		}
+		
+		function getAltitude(p,rho,To) {
+			//get the first height, check if it is in the first layer (h0 = 0)
+			var altR = 0
+			var h1 = 0
+			var p0 = ATM1;
+			var rho0 = DENSITY;
+			//adjust rho for temp offset
+			//if (rho && To) rho = rho*(TEMP+To)/TEMP; // FIXED!
+			//getAtmosphere for all alt and To until find adjusted rho, then use rho with no offset in reverse calculation... cheating!
+				var guess = -6;
+				var lastrho = 0;
+				var lastAlt = 0;
+				while (guess < 900) {
+					var xatm = getAtmosphere(guess*100,To);
+					if (xatm.rho <= rho) {
+						//weighted mean
+						var weight = (xatm.rho - rho)/(xatm.rho - lastrho);
+						var meanT = (xatm.T*weight) + (lastT*(1-weight));
+						rho = rho*(meanT+To)/meanT;
+						break;
+					}
+					lastT = xatm.T;
+					lastrho = rho;
+					guess++;
+				}//*/
+			var T0 = TEMP;//TEMP+To;
+			while (h1 >= altR) {
+				if (nextLapseRate(altR) != 0 && p) {
+					var T1 = Math.pow(p/p0,R*nextLapseRate(altR)/-g)*(T0);
+					h1 = (T1 - T0)/nextLapseRate(altR) + altR;
+
+				} else if (nextLapseRate(altR) != 0 && rho) {
+					var T1 = Math.pow(rho/rho0,1/(-g/(R*nextLapseRate(altR))-1))*(T0);
+					h1 = (T1 - T0)/nextLapseRate(altR) + altR;
+
+				} else {
+					//for isothermal layers
+					if (p) h1 = (Math.log(p/p0)*R*T0/-g) + altR;
+					if (rho) h1 = (Math.log(rho/rho0)*R*T0/-g) + altR;
+				}
+				//check answer and loop
+				altR = getNextAltRange(altR);
+				if (altR > 90000) return 0; //break out if too high altitude
+				//also update p0 and T0
+				var nextATM = getAtmosphere(altR,0);
+				p0 = nextATM.p;
+				rho0 = nextATM.rho;
+				T0 = nextATM.T;
+			}
+			return h1;
+		}
+		
+		function drawOutput(ATM) {
+			drawCanvas(ATM.To,ATM.alt);
+			drawCanvas2(ATM.ga);
+			//calc the speed of sound
+			SoS = Math.sqrt(1.4*R*ATM.T);
+			ATM = convertATMunits(ATM);
+			$("#OUTalt").text((ATM.alt).toFixed(2));
+			$("#OUTgalt").text((ATM.ga).toFixed(2));
+			$("#OUTtemp").text((ATM.T).toFixed(2));
+			//fix for no pressure and density values
+			if (ATM.rho === 0) $("#OUTden").text("negligible");
+			else $("#OUTden").text((ATM.rho).toFixed(7));
+			if (ATM.p === 0) $("#OUTp").text("negligible");
+			else $("#OUTp").text((ATM.p).toFixed(4));
+			$("#OUTgravity").text((ATM.grav).toFixed(5));
+			$("#OUTsos").text((SoS).toFixed(2));
+		}
+		
+		function drawCanvas(To,Altitude) {
+			ctx.clearRect(0,0,500,1000);
+			var gradient1 = ctx.createLinearGradient(0,790,0,0);
+					gradient1.addColorStop("0","white");
+					gradient1.addColorStop("0.9","lightyellow");
+					gradient1.addColorStop("1.0","lightcyan");
+			ctx.fillStyle = gradient1;
+			ctx.fillRect(0,0,500,960);
+			
+			//get rid of this later FIX
+			To = parseFloat(To);
+			if (isNaN(To)) To = 0;
+			//draw a box for the graph
+				ctx.setLineDash([]);
+				ctx.strokeStyle = "hsla(0,0%,70%,1)";
+				ctx.lineWidth = 1;
+				ctx.strokeRect(0.5,0.5,499,899);
+			//draw the temperature line
+				ctx.lineWidth = 2;
+				ctx.lineJoin = "round";
+				var gradient = ctx.createLinearGradient(400,900,100,900); //can To to x?
+					gradient.addColorStop("0","crimson");
+					gradient.addColorStop("0.4","violet");
+					gradient.addColorStop("1.0","lightskyblue");
+				ctx.strokeStyle = gradient;
+				ctx.beginPath();
+				ctx.moveTo(400+To,900);
+				ctx.lineTo(400-(71.5*3)+To,790);// 3 pixels(x) = 1 Kelvin and 1 pixel(y) = 100 meters
+				ctx.lineTo(400-(71.5*3)+To,700);
+				ctx.lineTo(400-(59.5*3)+To,580);
+				ctx.lineTo(400-(17.5*3)+To,430);
+				ctx.lineTo(400-(17.5*3)+To,390);
+				ctx.lineTo(400-(73.5*3)+To,190);
+				ctx.lineTo(400-(101.2*3)+To,51.5);
+				ctx.lineTo(400-(101.2*3)+To,0);
+				ctx.stroke();
+			//draw the grid lines
+				//x axis 10C every 30 pixels 355 = 0 C
+				//y axis 1 km every 10 pixels 900 = 0 m
+				//x axis 210 = 1.0 kg/cubic meter density 0=0
+					//log10 scale: 0 = 10^-7 and 210 = 1 (10^(n+1) every 30)
+				//x axis 350 = 100000 Pascals 0=0
+					//log10 scale: 0 = 10^-1 and 350 = 10^6 (10^(n+1) every 50)
+					
+				ctx.strokeStyle = "hsla(0,0%,0%,1)";
+				ctx.lineWidth = 1;
+				ctx.font = "9px Arial";
+				//grid lines for temperature
+					ctx.fillStyle = "hsla(0,50%,50%,1)";
+					ctx.beginPath();
+					ctx.moveTo(15,900.5);
+					ctx.lineTo(485,900.5);
+					ctx.stroke();
+					for (var t=0;t<=15;t++){
+						ctx.beginPath();
+						ctx.moveTo(t*30+25.5,900);
+						ctx.lineTo(t*30+25.5,906);
+						ctx.stroke();
+						var text = (t-11)*10;
+						if (t === 15) text = text + " C";
+						ctx.fillText(text,t*30+27.5,910.5);
+					}
+				
+				if (useLog){
+					//density grid
+					ctx.fillStyle = "hsla(270,50%,50%,1)";
+					ctx.beginPath();
+					ctx.moveTo(0,920.5);
+					ctx.lineTo(230,920.5);
+					ctx.stroke();
+					for (var l=0;l<=6;l++){
+						ctx.beginPath();
+						ctx.moveTo(l*35+0.5,920);
+						ctx.lineTo(l*35+0.5,926);
+						ctx.stroke();
+						ctx.font = "9px Arial";
+						if (l === 6) {
+							ctx.fillText("1.0 kg/cu. m",l*35+1.5,930.5);
+							continue;
+						}
+						var text = String(l-6);
+						ctx.fillText(10,l*35+1,930.5);
+						ctx.font = "7px Arial";
+						ctx.fillText(text,l*35+11.5,927.5);
+					}
+					//pressure grid
+					ctx.fillStyle = "hsla(135,50%,50%,1)";
+					ctx.beginPath();
+					ctx.moveTo(0,940.5);
+					ctx.lineTo(440,940.5);
+					ctx.stroke();
+					ctx.font = "9px Arial";
+					for (var l=0;l<=6;l++){
+						ctx.beginPath();
+						ctx.moveTo(l*70+0.5,940);
+						ctx.lineTo(l*70+0.5,946);
+						ctx.stroke();
+						var text = String(Math.pow(10,l-1));
+						if (l === 6) text = text + " Pa";
+						ctx.fillText(text,l*70+1.5,950.5);
+					}
+				} else {
+					//density grid
+					ctx.fillStyle = "hsla(270,50%,50%,1)";
+					ctx.beginPath();
+					ctx.moveTo(0,920.5);
+					ctx.lineTo(280,920.5);
+					ctx.stroke();
+					for (var l=0;l<=6;l++){
+						ctx.beginPath();
+						ctx.moveTo(l*42+0.5,920);
+						ctx.lineTo(l*42+0.5,926);
+						ctx.stroke();
+						var text = (1/5*l).toFixed(1);
+						if (l === 6) text = text + " kg/cu. m";
+						ctx.fillText(text,l*42+1.5,930.5);
+					}
+					//pressure grid
+					ctx.fillStyle = "hsla(135,50%,50%,1)";
+					ctx.beginPath();
+					ctx.moveTo(0,940.5);
+					ctx.lineTo(380,940.5);
+					ctx.stroke();
+					for (var l=0;l<=5;l++){
+						ctx.beginPath();
+						ctx.moveTo(l*70+0.5,940);
+						ctx.lineTo(l*70+0.5,946);
+						ctx.stroke();
+						var text = 20000*l;
+						if (l === 5) text = text + " Pa";
+						ctx.fillText(text,l*70+1.5,950.5);
+					}
+				}
+			//grid lines for altitude
+				ctx.fillStyle = "hsla(0,0%,0%,1)";
+				for (var y=0;y<=17;y++){
+					ctx.beginPath();
+					ctx.moveTo(500,y*50-0.5);
+					ctx.lineTo(494,y*50-0.5);
+					ctx.stroke();
+					if (y % 2 === 0) ctx.fillText((18-y)*5,488.5,y*50-3.5);
+				}
+			//label the tropo,strato,mesosphere
+				ctx.fillStyle = "hsla(0,0%,0%,0.5)";
+				ctx.font = "12px Arial";
+				ctx.strokeStyle = "hsla(0,0%,50%,0.25)";
+				ctx.setLineDash([5,2]);
+				//troposphere 0 - 11km
+				ctx.fillText("Troposphere",400,815);
+				ctx.beginPath();
+				ctx.moveTo(0,789.5);
+				ctx.lineTo(500,789.5);
+				ctx.stroke();
+				//tropopause 11 - 20km
+				ctx.fillText("Tropopause",400,725);
+				ctx.beginPath();
+				ctx.moveTo(0,699.5);
+				ctx.lineTo(500,699.5);
+				ctx.stroke();
+				//stratosphere 20 - 47km
+				ctx.fillText("Stratosphere",400,455);
+				ctx.beginPath();
+				ctx.moveTo(0,429.5);
+				ctx.lineTo(500,429.5);
+				ctx.stroke();
+				//stratopause 47 - 51km
+				ctx.fillText("Stratopause",400,415);
+				ctx.beginPath();
+				ctx.moveTo(0,389.5);
+				ctx.lineTo(500,389.5);
+				ctx.stroke();
+				ctx.beginPath();
+				//mesosphere at 51 - 81km
+				ctx.fillText("Mesosphere",400,75);
+				ctx.moveTo(0,51.5);
+				ctx.lineTo(500,51.5);
+				ctx.stroke();
+				ctx.fillText("Mesopause",400,25);
+				ctx.setLineDash([]);
+			//draw the density line
+				ctx.strokeStyle = "hsla(270,50%,50%,1)";
+				ctx.lineWidth = 2;
+				ctx.beginPath();
+					if (useLog) var a0 = Math.log10(densCurve[0]*1000000)/6;
+					else var a0 = densCurve[0];
+				ctx.moveTo(a0*210,900);
+				for (var a=1;a<=900;a++){
+					if (useLog) var x = Math.log10(densCurve[a]*1000000)/6;
+					else var x = densCurve[a];
+					ctx.lineTo(x*210,900-a);
+				}
+				ctx.stroke();
+			//draw the pressure line
+				ctx.strokeStyle = "hsla(135,50%,50%,1)";
+				ctx.lineWidth = 2;
+				ctx.beginPath();
+					if (useLog) var a0 = Math.log10(pressCurve[0]*10)*2;
+					else var a0 = pressCurve[0]/10000;
+				ctx.moveTo(a0*35,900);
+				for (var a=1;a<=900;a++){
+					if (useLog) var x = Math.log10(pressCurve[a]*10)*2;
+					else var x = pressCurve[a]/10000;
+					ctx.lineTo(x*35,900-a);
+				}
+				ctx.stroke();
+			//draw the current altitude
+			if (Altitude && Altitude != 0){
+				var a = Altitude/100 + 0.5;
+				ctx.setLineDash([]);
+				ctx.strokeStyle = "hsla(40,100%,50%,0.05)";
+				ctx.lineWidth = 12;
+				ctx.beginPath();
+				ctx.moveTo(0,900-a);
+				ctx.lineTo(500,900-a);
+				ctx.stroke();
+				ctx.lineWidth = 9;
+				ctx.beginPath();
+				ctx.moveTo(0,900-a);
+				ctx.lineTo(500,900-a);
+				ctx.stroke();
+				ctx.lineWidth = 6;
+				ctx.beginPath();
+				ctx.moveTo(0,900-a);
+				ctx.lineTo(500,900-a);
+				ctx.stroke();
+				ctx.lineWidth = 3;
+				ctx.beginPath();
+				ctx.moveTo(0,900-a);
+				ctx.lineTo(500,900-a);
+				ctx.stroke();
+				ctx.setLineDash([8,1]);
+				ctx.strokeStyle = "hsla(0,0%,0%,1)";
+				ctx.lineWidth = 1;
+				ctx.beginPath();
+				ctx.moveTo(0,900-a);
+				ctx.lineTo(500,900-a);
+				ctx.stroke();
+			}
+		}
+		
+		function drawCanvas2(Altitude) {
+			ctx2.clearRect(0,0,1000,500);
+			var gradient1 = ctx2.createLinearGradient(0,495,0,90);
+					gradient1.addColorStop("0","white");
+					gradient1.addColorStop("0.05","lightyellow");
+					gradient1.addColorStop("0.11","lightcyan");
+					gradient1.addColorStop("0.2","lightskyblue");
+					gradient1.addColorStop("0.4","midnightblue");
+					gradient1.addColorStop("1.0","black");
+			ctx2.fillStyle = gradient1;
+			ctx2.fillRect(0,0,1000,500);
+			//draw a box for the graph
+				ctx2.setLineDash([]);
+				ctx2.strokeStyle = "hsla(0,0%,70%,1)";
+				ctx2.lineWidth = 1;
+				ctx2.strokeRect(0.5,0.5,999,499);
+			//draw grid lines
+			//draw temp line (geoMETRIC altitude)
+			// 1px = 2 km, 1px = 1 K
+			// left side is 100 K
+				ctx2.lineWidth = 2;
+				ctx2.lineJoin = "round";
+				var gradient = ctx2.createLinearGradient(850,0,90,0);
+					gradient.addColorStop("0","yellow");
+					gradient.addColorStop("0.5","crimson");
+					gradient.addColorStop("0.9","violet");
+					gradient.addColorStop("1.0","lightskyblue");
+				ctx2.strokeStyle = gradient;
+				ctx2.beginPath();
+				//homosphere here (adjusted from geopotential to geometric
+				ctx2.moveTo(188,500); //start at 15 C at sea level (rounded to 0.5 px)
+				ctx2.lineTo(116.5,494.5); // troposphere
+				ctx2.lineTo(116.5,490); // tropopause
+				ctx2.lineTo(128.5,484);
+				ctx2.lineTo(170.5,476.5); // stratosphere
+				ctx2.lineTo(170.5,474.5); //stratopause
+				ctx2.lineTo(114.5,464);
+				ctx2.lineTo(87,457); // mesosphere
+				/////////
+				ctx2.lineTo(87,454.5); // 186.8673 K at 91 km (edge of mesopause
+				for (var h=1;h<=9;h++){ //91 to 110 km
+					var t = 263.1905 + -76.3232 * Math.sqrt(1 - Math.pow(((h*2)-1)/19.9429,2));
+					ctx2.lineTo(t-100,455-h);
+				}
+				ctx2.lineTo(140,445); // 240 K at 110 km
+				ctx2.lineTo(260,440); // 360 k at 120 km (lapse rate 12)
+				for (var z=1;z<=88;z++){ // 120 km to 1000 km
+					var T = 1000 - ((1000-360)*Math.exp(-0.01875*(z*10)*((earthRadius+120)/(earthRadius+(z*10+120)))));
+					ctx2.lineTo(T-100,440-(z*5));
+				}
+				ctx2.stroke();
+				
+			ctx2.strokeStyle = "hsla(0,0%,0%,0.5)";
+			ctx2.lineWidth = 1;
+			ctx2.font = "9px Arial";
+			//grid lines for temperature
+				ctx2.fillStyle = "hsla(0,0%,0%,0.5)";
+				for (var t=0;t<=18;t++){
+					ctx2.beginPath();
+					ctx2.moveTo(t*50+50.5,500);
+					ctx2.lineTo(t*50+50.5,495);
+					ctx2.stroke();
+					var text = (t+3)*50;
+					if (t === 18) text = text + " K";
+					ctx2.fillText(text,t*50+48.5,493);
+				}
+			//grid lines for geometric altitude
+				var gradient2 = ctx2.createLinearGradient(0,400,0,320);
+					gradient2.addColorStop("0","black");
+					gradient2.addColorStop("0.5","salmon");
+					gradient2.addColorStop("1.0","white");
+				ctx2.strokeStyle = gradient2;
+				ctx2.fillStyle = gradient2;
+				//ctx2.strokeStyle = "hsla(0,0%,50%,0.5)";
+				//ctx2.fillStyle = "hsla(0,0%,100%,0.5)";
+				for (var a=0;a<=8;a++){
+					ctx2.beginPath();
+					ctx2.moveTo(1000,a*50+49.5);
+					ctx2.lineTo(995,a*50+49.5);
+					ctx2.stroke();
+					var text = (a+1)*100;
+					if (a === 8) ctx2.fillText(text + " km",965.5,448.5 - (a*50));
+					else ctx2.fillText(text,980,448.5 - (a*50));
+				}
+			// label the layers
+				ctx2.fillStyle = "hsla(0,0%,0%,0.7)";
+				ctx2.font = "12px Arial";
+				ctx2.strokeStyle = "hsla(0,0%,50%,0.25)";
+				ctx2.setLineDash([5,2]);
+				//homosphere 0 - 91km
+				ctx2.fillText("Homosphere",15,475);
+				ctx2.beginPath();
+				ctx2.moveTo(0,454.5);
+				ctx2.lineTo(86,454.5);
+				ctx2.stroke();
+				//thermosphere 91-500 km
+				ctx2.fillStyle = "hsla(0,0%,70%,1.0)";
+				ctx2.strokeStyle = "hsla(0,0%,100%,0.25)";
+				ctx2.fillText("Thermosphere",15,325);
+				ctx2.beginPath();
+				ctx2.moveTo(0,249.5);
+				ctx2.lineTo(86,249.5);
+				ctx2.stroke();
+				ctx2.fillText("Exosphere",15,100);
+			// draw altitude line
+			if (Altitude && Altitude > 90000){
+				var a = Altitude/2000 + 0.5;
+				ctx2.setLineDash([]);
+				ctx2.strokeStyle = "hsla(0,0%,100%,0.1)";
+				ctx2.lineWidth = 12;
+				ctx2.beginPath();
+				ctx2.moveTo(0,500-a);
+				ctx2.lineTo(1000,500-a);
+				ctx2.stroke();
+				ctx2.lineWidth = 9;
+				ctx2.strokeStyle = "hsla(0,0%,100%,0.125)";
+				ctx2.beginPath();
+				ctx2.moveTo(0,500-a);
+				ctx2.lineTo(1000,500-a);
+				ctx2.stroke();
+				ctx2.lineWidth = 6;
+				ctx2.strokeStyle = "hsla(0,0%,100%,0.15)";
+				ctx2.beginPath();
+				ctx2.moveTo(0,500-a);
+				ctx2.lineTo(1000,500-a);
+				ctx2.stroke();
+				ctx2.lineWidth = 3;
+				ctx2.strokeStyle = "hsla(0,0%,100%,0.2)";
+				ctx2.beginPath();
+				ctx2.moveTo(0,500-a);
+				ctx2.lineTo(1000,500-a);
+				ctx2.stroke();
+				ctx2.setLineDash([8,1]);
+				ctx2.strokeStyle = "hsla(0,0%,0%,1)";
+				ctx2.lineWidth = 1;
+				ctx2.beginPath();
+				ctx2.moveTo(0,500-a);
+				ctx2.lineTo(1000,500-a);
+				ctx2.stroke();
+				ctx2.setLineDash([]);
+			}
+		}
+		
+		function convertATMunits(ATM){
+			var newAlt = convertUnits(ATM.alt,"m",$("#OUTaltU option:selected").val());
+			var newT1 = convertUnits(ATM.T,"Ka",$("#OUTtempU option:selected").val());
+			var newp1 = convertUnits(ATM.p,"Pa",$("#OUTpU option:selected").val());
+			var newrho1 = convertUnits(ATM.rho,"kgpcum",$("#OUTdenU option:selected").val());
+			var newgAlt = convertUnits(ATM.ga,"m",$("#OUTgaltU option:selected").val());
+			return {"alt":newAlt,"T":newT1,"To":ATM.To,"p":newp1,"rho":newrho1,"ga":newgAlt,"grav":ATM.grav};
+		}
+		
+		function convertUnits(input,iUnit,oUnit) {
+			//take the input
+			switch (iUnit){
+				//relative temperature (for the offset)
+				case "F": 
+					if (oUnit === "K" || oUnit === "C") return input * 5 / 9; //return F in K (relative)
+					else return input;
+				case "K":
+					if (oUnit === "F") return input * 9 / 5; //K to F (relative)
+					else return input;
+				//absolute temperature conversion
+				case "Fa":
+					if (oUnit === "Ka") return (input - 32) * 5 / 9 + 273.15; //F to K (absolute)
+					if (oUnit === "Ca") return (input - 32) * 5 / 9;
+					else return input;
+				case "Ca":
+					if (oUnit === "Ka") return input + 273.15; //C to K
+					if (oUnit === "Fa") return input * 9 / 5 + 32; //C to F
+					else return input;
+				case "Ka":
+					if (oUnit === "Fa") return (input - 273.15) * 9 / 5 + 32; //K to F (absolute)
+					if (oUnit === "Ca") return input - 273.15;
+					else return input;
+				//length conversion
+				case "km": 
+					if (oUnit === "m") return input * 1000; //return km in meters
+					if (oUnit === "ft") return input /0.0003048; //return km in feet
+					else return input;
+				case "ft": 
+					if (oUnit === "m") return input * 0.3048; //return feet in meters
+					if (oUnit === "km") return input * 0.0003048; //return feet in km
+					else return input;
+				case "m": 
+					if (oUnit === "ft") return input / 0.3048; //meters to feet
+					if (oUnit === "km") return input / 1000; //meters to km
+					else return input;
+				//pressure conversion
+				case "Pa":
+					if (oUnit === "mb") return input / 100;
+					if (oUnit === "atm") return input / 101325;
+					if (oUnit === "psi") return input / 6894.757
+					else return input;
+				case "mb":
+					if (oUnit === "Pa") return input * 100;
+					if (oUnit === "atm") return input / 1013.25;
+					if (oUnit === "psi") return input / 68.94757
+					else return input;;
+				case "atm":
+					if (oUnit === "mb") return input * 1013.25;
+					if (oUnit === "Pa") return input * 101325;
+					if (oUnit === "psi") return input / 0.068046;
+					else return input;
+				case "psi":
+					if (oUnit === "mb") return input * 68.94757;
+					if (oUnit === "atm") return input * 0.068046;
+					if (oUnit === "Pa") return input * 6894.757;
+					else return input;
+				//density conversion
+				case "kgpcum":
+					if (oUnit === "kgpl") return input / 1000;
+					if (oUnit === "ppcuf") return input / 16.01846;
+					if (oUnit === "slcuf") return input / 515.3788;
+					else return input;
+				case "kgpl":
+					if (oUnit === "kgpcum") return input * 1000;
+					if (oUnit === "ppcuf") return input / 0.01601846;
+					if (oUnit === "slcuf") return input / 0.5153788;
+					else return input;
+				case "ppcuf":
+					if (oUnit === "kgpl") return input * 0.01601846;
+					if (oUnit === "kgpcum") return input * 16.01846;
+					if (oUnit === "slcuf") return input / 32.174048556445;
+					else return input;
+				case "slcuf":
+					if (oUnit === "kgpl") return input / 1.94032033198;
+					if (oUnit === "kgpcum") return input / 0.00194032033198;
+					if (oUnit === "ppcuf") return input * 32.174048556445;
+					else return input;
+				default:
+					alert("Conversion error! " + iUnit);
+					break;
+			}
+
+		}
+
+	</script>
+</head>
+<body>
+<div class="left calc">
+	<h2>ISA Calculator</h2>
+	<p>U.S. Standard Atmosphere Calculator (1976)
+	<div class="input-sec">
+	<h3>INPUT</h3>
+		<form>
+			Temperature offset: (Kelvin or Celsius)<br />
+			<input type="number" id="tempOffset" value="0">
+			<select id="tempUnits" class="Units">
+				<option value="K">Kelvin/Celsius</option>
+				<option value="F">Fahrenheit</option>
+			</select><br />
+			Altitude (geopotential): (meters)<br />
+			<input type="number" id="altitude" class="input" autofocus="autofocus">
+			<select id="altUnits" class="Units">
+				<option value="m">meters</option>
+				<option value="km">kilometers</option>
+				<option value="ft">feet</option>
+			</select><br />
+			... or ... <br /><!--
+			Temperature: (Kelvin)<br />
+			<input type="number" id="temp" class="input"><br />
+			<br />... or ... -->
+			Density: (kg/cubic meter)<br />
+			<input type="number" id="density" class="input"><br />
+			Pressure: (Pascals)<br />
+			<input type="number" id="pressure" class="input"><br />
+		</form>
+	</div>
+	<div class="output-sec">
+	<h3>OUTPUT</h3>
+			<h4>Altitude : <span id="OUTalt"></span>
+				<select id="OUTaltU" class="Units right">
+					<option value="m">meters</option>
+					<option value="km">kilometers</option>
+					<option value="ft">feet</option>
+				</select></h4>
+			<h4>Geometric Altitude : <span id="OUTgalt"></span>
+				<select id="OUTgaltU" class="Units right">
+					<option value="m">meters</option>
+					<option value="km">kilometers</option>
+					<option value="ft">feet</option>
+				</select></h4>
+			<h4>Temperature : <span id="OUTtemp"></span>
+				<select id="OUTtempU" class="Units right">
+					<option value="Ca">Celsius</option>
+					<option value="Ka">Kelvin</option>
+					<option value="Fa">Fahrenheit</option>
+				</select></h4>
+			<h4>Density : <span id="OUTden"></span>
+				<select id="OUTdenU" class="Units right">
+					<option value="kgpcum">kg/cubic meter (g/L)</option>
+					<option value="kgpl">kg/liter</option>
+					<option value="ppcuf">pound/cubic foot</option>
+					<option value="slcuf">slug/cubic foot</option>
+				</select></h4>
+			<h4>Pressure : <span id="OUTp"></span>
+				<select id="OUTpU" class="Units right">
+					<option value="Pa">Pascals</option>
+					<option value="mb">millibars</option>
+					<option value="atm">atmosphere</option>
+					<option value="psi">psi</option>
+				</select></h4>
+			<p>Gas constant for dry air R = <span class="Rc">287.053</span> J/kg K
+			<br />Radius of Earth = <span id="ERc">6356.766</span> kilometers
+			<br />Gravity at that altitude g<sub>alt</sub> = <span id="OUTgravity"></span> m/s<sup>2</sup>
+			<br />Speed of sound = <span id="OUTsos"></span> m/s
+	
+	</div>
+	<p>Copyright &copy; 2015 Trevor Gast
+	<br />GNU General Public License
+	<br /><a href="http://codeandcompose.com">codeandcompose.com</a>
+	<canvas id="graph2" width="1000" height="500">Your browser does not support HTML 5... loser!</canvas>
+</div>
+<div class="left">
+	<canvas id="graph" width="500" height="960">Your browser does not support HTML 5... loser!</canvas>
+	<br /><button id="log">log10 scale</button>
+</div>
+</body>
+</html>
