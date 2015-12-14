@@ -12,13 +12,39 @@
 		input[type=number]::-webkit-outer-spin-button { 
 				-webkit-appearance: none; 
 		}
+		#Infodiv {
+			visibility: hidden;
+			display: none;
+			position: absolute;
+			margin: 20%;
+			padding: 8px;
+			background: #D6F6F6;
+			border-radius: 8px;
+			border: solid 1px black;
+			-webkit-box-shadow: 8px 8px 16px 4px rgba(80,80,80,0.5);
+			-moz-box-shadow: 8px 8px 16px 4px rgba(80,80,80,0.5);
+			box-shadow: 8px 8px 16px 4px rgba(80,80,80,0.5);
+		}
 		.left {
-			margin-left: 3%;
+			margin-left: 16px;
 			position: relative;
 			float: left;
 		}
 		.right {
-			margin-right: 3%;
+			margin-right: 16px;
+			position: relative;
+			float: right;
+		}
+		.center {
+			margin-left: 20%;
+		}
+		button.left {
+			margin: 4px;
+			position: relative;
+			float: left;
+		}
+		button.right {
+			margin-right: 4px;
 			position: relative;
 			float: right;
 		}
@@ -29,6 +55,7 @@
 			background: #F6F6F6;
 			border-radius: 8px;
 			padding-left: 8px;
+			padding-top: 8px;
 			padding-bottom: 8px;
 			margin: 4px;
 		}
@@ -36,11 +63,20 @@
 			background: #F6F6F6;
 			border-radius: 8px;
 			padding-left: 8px;
-			padding-bottom: 8px;
+			padding-top: 4px;
+			padding-bottom: 4px;
 			margin: 4px;
+			margin-top:8px;
 		}
 		h3 {
-			padding-top: 8px;
+			padding-top: 0px;
+			margin-top: 8px;
+			margin-bottom: 4px;
+		}
+		h4 {
+			padding-top: 0px;
+			margin-top: 8px;
+			margin-bottom: 8px;
 		}
 		a {
 			color: #4080CC;
@@ -55,24 +91,43 @@
 		a:hover {
 			text-decoration: underline;
 		}
-		ul {
-			list-style-type: none;
-			padding: 0px;
-			margin: 8px;
+		a.clickable {
+			color: #000;
 		}
-		ul.articles > li {
-			position: relative;
+		a.clickable:hover {
+			text-shadow: 0px 0px 3px rgba(80,90,160,1);
+			text-decoration: none;
+		}
+		ul {
+			list-style-type: disc;
+			padding: 0px;
+			margin-left: 20px;
+			margin-top: 6px;
+			margin-bottom: 6px;
+		}
+		li {
 			padding: 2px;
-			margin-left: 24px;
-			background: #F6F6F6;
-			border-radius: 4px;
-			width: 500px;
+		}
+		sub, sup { 
+			font-size: 75%;
+			line-height: 0; 
+			position: relative; 
+			vertical-align: baseline; 
+		}
+		sup { 
+			top: -0.5em; 
+		}
+		sub { 
+			bottom: -0.25em; 
+		}
+		.spacing {
+			line-height: 24px;
 		}
 	</style>
 	<script src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js" type="text/javascript"></script>
 	<script type="text/javascript">
 		//Copyright 2015 Trevor Gast: codeandcompose.com
-		//ISA international Standard Atmosphere calculator and graph version 2.0 (2 December 2015)
+		//ISA international Standard Atmosphere calculator and graph version 2.1 (8 December 2015)
 		//GNU General Public License
 		//This program is free software: you can redistribute it and/or modify
     	//it under the terms of the GNU General Public License as published by
@@ -91,14 +146,33 @@
 		var densCurve = []; //array for x values
 		var pressCurve = [];
 		var useLog = false;
+		var drawNDensity = false;
 		var loaded = false;
+		var ndloaded = false;
 		var prevTempUnits = "K";
 		var prevAltUnits = "m";
 	
+		//number density array
+		var nArray = {"N2":[],"O":[],"O2":[],"Ar":[],"He":[],"H":[],"sigma":[]};
 		// constants!
-		var R = 287.053;
-		//var RsISA = (28.0134*0.78084)+(31.9988*0.209476)+(39.948*0.00934)+(44.00995*0.000314)+(20.183*0.00001818)+(4.0026*0.00000524)+(83.8*0.00000114)+(131.3*0.000000087)+(16.04303*0.000002)+(2.01594*0.0000005);
+		var R = 287.052; //(287.053 not-normalized)
+		//table 3 molecular weight by species (Mair is at sea level)
+		//var Mair = (28.0134*0.78084)+(31.9988*0.209476)+(39.948*0.00934)+(44.00995*0.000314)+(20.183*0.00001818)+(4.0026*0.00000524)+(83.8*0.00000114)+(131.3*0.000000087)+(16.04303*0.000002)+(2.01594*0.0000005);
+		//total percentage = 99.9997147
+		//console.log(Mair/0.999997147); //28.964507 (28.964425 not normalized)
+		//M86 = 28.9522082 (N2,O2,Ar,He,O)
+		//sigman at 86 1.447265163E+20
 		//gas constant R* = 8.31432
+		var Rs = 8.31432;
+		//var k = parseFloat("1.380622E-23"); //Boltzmann
+		var NA = parseFloat("6.022140857E+23");
+			//parseFloat("6.022169E+26"); //Avagadro constant kmol-1 (Mechtly 1973)
+			//6.022140857E+23 wikipedia mol-1 (and NIST)
+			//6.02217179E+23 ucdavis mol-1
+			//6.02214129E+23 britannica mol-1
+			//6.0221415E+23
+		// Molecular weight
+		var Mi = {"N2":28.0134,"O2":31.9988,"Ar":39.948,"CO2":44.00995,"Ne":20.183,"He":4.0026,"Kr":83.8,"Xe":131.3,"CH4":16.04303,"H2":2.01594,"O":15.9994};
 		//console.log(RsISA); //short 0.000002853 ?
 		//287.05282152059 or 287.05200256122 (adjusted so total fractions of molecular mass = 1)
 		//other values obtained from other "sources"
@@ -111,6 +185,20 @@
 		var g = 9.80665;
 		var SoS = 0;
 		//var G = ??;
+		//table of species dependent thermal diffusion coefficients and constants
+		var table6 = {	"O":{"alphai":0,"ai":parseFloat("6.986E+20"),"bi":0.75},
+						"O2":{"alphai":0,"ai":parseFloat("4.863E+20"),"bi":0.75},
+						"Ar":{"alphai":0,"ai":parseFloat("4.487E+20"),"bi":0.87},
+						"He":{"alphai":-0.4,"ai":parseFloat("1.7E+21"),"bi":0.691},
+						"H":{"alphai":-0.25,"ai":parseFloat("3.305E+21"),"bi":0.5}
+					};
+		//table of six sets of species-dependent coefficients applicable to empirical expression representing the flux term vi/(Di+K)
+		var table7 = {	"O":{"Qi":parseFloat("-5.809644E-4"),"qi":parseFloat("-3.416248E-3"),"Ui":56.90311,"ui":97,"Wi":parseFloat("2.70624E-5"),"wi":parseFloat("5.008765E-4")}, //2.706246?
+						"O2":{"Qi":parseFloat("1.366212E-4"),"qi":0,"Ui":86,"ui":0,"Wi":parseFloat("8.333333E-5"),"wi":0}, //1.366312?
+						"Ar":{"Qi":parseFloat("9.434079E-5"),"qi":0,"Ui":86,"ui":0,"Wi":parseFloat("8.333333E-5"),"wi":0},
+						"He":{"Qi":parseFloat("-2.457369E-4"),"qi":0,"Ui":86,"ui":0,"Wi":parseFloat("6.666667E-4"),"wi":0}
+					};
+		//*** qi is 0 above 97 km
 		//table of molecular weight ratios at 80000 to 86000 m geometric altitude (500 m per ratio) 
 		var table8 = [1.0,0.999996,0.999989,0.999971,0.999941,0.999909,0.99987,0.999829,0.999786,0.999741,0.999694,0.999641,0.999579];
 	
@@ -118,12 +206,10 @@
 			$(".input").keyup(function() {
 				//get the inputs and pass them to...
 				var value = parseFloat($(this).val());
-				var To = $("#tempOffset").val();
-				//make sure it is a number value...?
 				if (isNaN(value)) return; //do nothing for non-numbers FIX ME when adding other inputs!?
-				To = parseFloat(To);
+				var To = parseFloat($("#tempOffset").val());
+				//make sure it is a number value...?
 				if (isNaN(To)) To = 0; //coerce To to number or 0
-
 				To = convertUnits(To,$("#tempUnits option:selected").val(),"K");
 				
 				var valID = $(this).attr("id");
@@ -197,6 +283,25 @@
 				var ATM = getAtmosphere(inp.alt,inp.To);
 				drawOutput(ATM);
   			});
+  			$("#numDensity").click(function() {
+  				//toggle number density graph
+  				///only do first time
+  				if (!ndloaded){
+					for (y=0;y<=456;y++){
+						//convert to geopotential
+						var gpAlt = earthRadius*((y+43)*2000)/(earthRadius + ((y+43)*2000));
+						var nValue = getHeterosphere(gpAlt,true);
+						for (var n in nValue){
+							nArray[n][y] = nValue[n];
+						}
+					}
+					ndloaded = true;
+				}
+  				drawNDensity = !drawNDensity;
+  				var inp = getInput();
+				var ATM = getAtmosphere(inp.alt,inp.To);
+				drawOutput(ATM);
+  			});
   			//toggle constant for R
   			$(".Rc").click(function() {
 				for (var r = Rarr.length-1;r>=0;r--){
@@ -222,11 +327,11 @@
 					if (earthRadius === Earr[r]){
 						if (r <= Earr.length-2) {
 							earthRadius = Earr[r+1];
-							$(this).text((earthRadius/1000).toFixed(1));
+							$(this).text(earthRadius/1000);
 							break;
 						} else {
 							earthRadius =  Earr[0];
-							$(this).text((earthRadius/1000).toFixed(1));
+							$(this).text(earthRadius/1000);
 							break;
 						}
 					}
@@ -234,6 +339,14 @@
 				var inp = getInput();
 				var ATM = getAtmosphere(inp.alt,inp.To);
 				drawOutput(ATM);
+			});
+			//toggle calculator information
+  			$("#titleInfo").click(function() {
+  				if ($("#Infodiv").is(":hidden")) $("#Infodiv").show(500).css({visibility: "visible"});
+  				else $("#Infodiv").hide(500,function(){$(this).css({visibility: "hidden", display: ""})});
+			});
+			$("#Infodiv").click(function() {
+  				$("#Infodiv").hide(500,function(){$(this).css({visibility: "hidden", display: ""})});
 			});
 			//change a unit menu
 			$(".Units").change(function() {
@@ -307,7 +420,67 @@
 		function canvasClick(event){
 			event = event || window.event;
 			var clickY = event.pageY - $(this).offset().top;
-			if (clickY > 900) return;
+			var clickX = event.pageX - $(this).offset().left;
+			if (clickY > 900) {
+				if (clickY <= 915){ //clicked temp
+					//355 = 0, 10 px = 30 deg
+					var To = (clickX - 355)/3;
+					$("#tempOffset").val(convertUnits(To,"K",$("#tempUnits option:selected").val()));
+					//check other inputs...
+					if ($.isNumeric($("#altitude").val())) {
+						var altVal = parseFloat($("#altitude").val());
+						altVal = convertUnits(altVal,$("#altUnits option:selected").val(),"m");
+					} else var altVal = null;
+					if (!altVal) {
+						if (parseFloat($("#density").val())) altVal = getAltitude(null,parseFloat($("#density").val()),To);
+						if (parseFloat($("#pressure").val())) altVal = getAltitude(parseFloat($("#pressure").val()),null,To);
+					}
+					//draw the output
+					var ATM = getAtmosphere(altVal,To);
+					//before drawing recalculate the density curve
+					//////
+					//call getAtmosphere in loop to recreate array for density curve
+						for (var a = 0; a<=900; a++){
+							var xATM = getAtmosphere(a*100,To);
+							densCurve[a] = xATM.rho;
+						}
+					///////
+					drawOutput(ATM);
+				} else if (clickY >= 920 && clickY <= 935){ //clicked density
+					var To = parseFloat($("#tempOffset").val());
+					if (isNaN(To)) To = 0; //coerce To to number or 0
+					To = convertUnits(To,$("#tempUnits option:selected").val(),"K");
+					//0 is 0, 1.0 is 210 px
+					//log - 35 px per power of 10, 0 is 10^-6, 210 is 10^0
+					if (!useLog) var x = clickX/210;
+					else var x = Math.pow(10,clickX/35)/1000000;
+					if (x > 1.5) return; //bail for invalid density?
+					x = Math.round(x*1000000)/1000000; //rounding to 6th decimal
+					$("#density").val(x);
+					$("#altitude").val("");
+					$("#pressure").val("");
+					var altGuess = getAltitude(null,x,To);
+					var ATM = getAtmosphere(altGuess,To);
+					drawOutput(ATM);
+				} else if (clickY >= 940 && clickY <= 955){ //clicked pressure
+					var To = parseFloat($("#tempOffset").val());
+					if (isNaN(To)) To = 0; //coerce To to number or 0
+					To = convertUnits(To,$("#tempUnits option:selected").val(),"K");
+					//0 is 0, 60000 is 210 px
+					//log - 70 px per power of 10, 0 is 10^-1, 70 is 10^0
+					if (!useLog) var x = 60000*clickX/210;
+					else var x = Math.pow(10,clickX/70)/10;
+					if (x > 108871) return; //bail for invalid pressure?
+					x = Math.round(x*100)/100; //rounding to 2 decimal
+					$("#pressure").val(x);
+					$("#altitude").val("");
+					$("#density").val("");
+					var altGuess = getAltitude(x,null,To);
+					var ATM = getAtmosphere(altGuess,To);
+					drawOutput(ATM);
+				}
+				return; //nothing of significance clicked
+			}
 			clickY = Math.round(clickY);
 			//convert click to altitude in correct unit
 			$("#altitude").val(convertUnits((900 - clickY)*100,"m",$("#altUnits option:selected").val()));
@@ -372,33 +545,122 @@
 			return {"alt":alt,"T":T1,"To":To,"p":p1,"rho":rho1,"ga":gAlt,"grav":grav};
 		}
 		
-		function getHeterosphere(alt) {
+		function getHeterosphere(alt,nBOOL) {
 			var gAlt = earthRadius*alt/(earthRadius-alt); //geometric altitude (true height above sea level)
 			//range check
 			if (gAlt > 1000000) {
 				gAlt = 1000000;
 				alt = earthRadius*gAlt/(earthRadius + gAlt);
 			}
-			var grav = Math.pow(earthRadius/(earthRadius+gAlt),2)*g;
-			// if then for each layer to get Temp
-			if (gAlt > 85999.9 && gAlt <= 91000) { //a little extra inclusive
-				var T = 186.8673;
-			} else if (gAlt > 91000 && gAlt <= 110000) {
-				var T = 263.1905 + -76.3232 * Math.sqrt(1-Math.pow(((gAlt/1000)-91)/-19.9429,2));
-			} else if (gAlt > 110000 && gAlt <= 120000) {
-				var T = (gAlt - 110000) * 0.012 + 240;
-			} else if (gAlt > 120000 && gAlt <= 1000000) {
-				var T = 1000 - ((1000-360)*Math.exp(-0.01875*((gAlt/1000)-120)*((earthRadius+120)/(earthRadius+(gAlt/1000)))));
-			}
+			var grav = Math.pow(earthRadius/(earthRadius+gAlt),2)*g; //gravity at altitude
+			var T = getTempH(gAlt); //temp at alt (does not recognize offset)
 			//get pressure
-			//get density
-			return {"alt":alt,"T":T,"To":0,"p":0,"rho":0,"ga":gAlt,"grav":grav};
+			//
+			var n = {"N2":0,"O":0,"O2":0,"Ar":0,"He":0,"H":0}; //for ni
+			var n86 = {"N2":parseFloat("1.129794E+20"),"O":parseFloat("8.6E+16"),"O2":parseFloat("3.030898E+19"),"Ar":parseFloat("1.3514E+18"),"He":parseFloat("7.5817E+14"),"H":0}; //1.129793736
+			//nO at 86 km 8.6E+16
+			//nO2 at 86 km 3.030898E+19 3.030898426
+			//nAr at 86 km 1.3514E+18 1.35140022
+			//nHe at 86 km 7.5817E+10 or 7.58173E+14? //14 is correct, 10 is typo
+			//nH ?
+			//perform loop to simulate integral with right riemann sum
+			//-int(M*g/(Rs*T)dZ)
+			var Mn = (gAlt > 100000) ? Mi.N2 : 28.9645; //use molecular weight of dry air below 100000 meters due to mixing still in effect
+			var dZ = 100; //in meters (size of riemann sum subdivision)
+			var count = Math.floor((gAlt-86000)/100); //round down and add the remainder on to the sum
+			var remainder = gAlt - (dZ*count+86000);
+			var totaln = Mn*grav/(Rs*T)*(remainder/1000); //add the remainder first, then add the rest of the riemann sum
+			if (count > 0){ //no looping if not at least dZ above 86000
+				for (var a = 1;a<=count;a++){
+					var Zh = 86000 + (dZ*a);
+					var Tz = getTempH(Zh);
+					var gz = Math.pow(earthRadius/(earthRadius+Zh),2)*g; //is this correct, or do we just use g?
+					//equation 38 for N2
+					var fa = (Mn*gz/(Rs*Tz))*(dZ/1000);
+					totaln += fa;
+				}
+			}
+			//calculate the species number density for nitrogen
+			n["N2"] = n86["N2"]*(186.8673/T)*Math.pow(Math.E,-totaln);
+			var sigmani = n["N2"]; //add the others as calculated to get sigman
+			///then move on to next species
+			
+			//species list ["O","O2","Ar","He","H"]; for each of these (H after 150 km)
+			//equation 35/36 for others
+			for (species in {"O":0,"O2":0,"Ar":0,"He":0}){ //loop through four species
+				//Mi = molecular weight Mi["O2"] etc...
+				var M = (gAlt > 100000) ? 28.9522 : 28.9645; // below 100000 m (why not always 28.9522 over 86 km????)
+				//remainder first, then Riemann sum
+				var Di = getMolecularDiffusion(sigmani,T,table6[species].ai,table6[species].bi);
+				var K = getEddyDiffusion(gAlt);
+				var dTdZ = getdTdZ(gAlt);
+				var fz = (gAlt >= 115000) ? (Mi[species]*grav/(Rs*T)) + (table6[species].alphai/T*(dTdZ)) : (grav/(Rs*T))*(Di/(Di+K))*(Mi[species]+(M*K/Di)+((table6[species].alphai*Rs/grav)*(dTdZ)));
+				var flux = (gAlt < 97000) ? table7[species].Qi*Math.pow(gAlt/1000-table7[species].Ui,2)*Math.pow(Math.E,-table7[species].Wi*Math.pow(gAlt/1000-table7[species].Ui,3)) + table7[species].qi*Math.pow(table7[species].ui-(gAlt/1000),2)*Math.pow(Math.E,-table7[species].wi*Math.pow(table7[species].ui-(gAlt/1000),3)) : table7[species].Qi*Math.pow(Zh/1000-table7[species].Ui,2)*Math.pow(Math.E,-table7[species].Wi*Math.pow(Zh/1000-table7[species].Ui,3));
+				var totalni = (fz + flux)*(remainder/1000);
+				for (var a = 1;a<=count;a++){ //Riemann sum
+					var Zh = 86000 + (dZ*a);
+					var Tz = getTempH(Zh);
+					var gz = Math.pow(earthRadius/(earthRadius+Zh),2)*g;
+					Di = getMolecularDiffusion(sigmani,Tz,table6[species].ai,table6[species].bi);
+					K = getEddyDiffusion(Zh);
+					dTdZ = getdTdZ(Zh);
+					fz = (Zh >= 115000) ? (Mi[species]*gz/(Rs*Tz)) + (table6[species].alphai/Tz*(dTdZ)) : (gz/(Rs*Tz))*(Di/(Di+K))*(Mi[species]+(M*K/Di)+((table6[species].alphai*Rs/gz)*(dTdZ))); //equation 36
+					//fz over 115 km is reduced due to (for K=0) fz = (Mi[species]*gz/(Rs*Tz)) + (table6[species].alphai/Tz*(dTdZ))
+					//equation 37 *second term is only necessary for O below 97 km... 
+					flux = (Zh < 97000) ? table7[species].Qi*Math.pow(Zh/1000-table7[species].Ui,2)*Math.pow(Math.E,-table7[species].Wi*Math.pow(Zh/1000-table7[species].Ui,3)) + table7[species].qi*Math.pow(table7[species].ui-(Zh/1000),2)*Math.pow(Math.E,-table7[species].wi*Math.pow(table7[species].ui-(Zh/1000),3)) : table7[species].Qi*Math.pow(Zh/1000-table7[species].Ui,2)*Math.pow(Math.E,-table7[species].Wi*Math.pow(Zh/1000-table7[species].Ui,3));
+					totalni += (fz + flux)*(dZ/1000); //sum of integrals or integral of sums...
+				}
+				//calculate ni then add to sigmani and repeat for next species
+				//add O and O2 before calculating Ar and He? sigman for O and O2 is N2, then all three for Ar and He, then all five for H?
+				n[species] = n86[species]*(186.8673/T)*Math.pow(Math.E,-totalni);
+				if (species === "O2") sigmani += n["O2"] + n["O"]; //background gas for Ar and He include O and O2 (below 100 km?)
+			}
+			sigmani += n["Ar"] + n["He"];
+			////now for Hydrogen over 150 km only
+			if (gAlt >= 150000){
+				var count5 = Math.floor((gAlt-500000)/100); //round down and add the remainder on to the sum
+				var remainder5 = gAlt - (dZ*count+500000);
+				var rz = (grav*Mi["H2"]*0.5/(Rs*T))*Math.abs(remainder5/1000); //will correct sign later
+				for (var a = 1;a<=Math.abs(count5);a++){ //Riemann sum(right for positive, left for negative
+					Zh = (count5 < 0) ? 500000 - (dZ*a) : 500000 + (dZ*a);
+					Tz = getTempH(Zh);
+					gz = Math.pow(earthRadius/(earthRadius+Zh),2)*g;
+					rz += (gz*Mi["H2"]*0.5/(Rs*Tz))*(dZ/1000); //integral from Z to 500 km
+				}
+				//correct for sign!
+				rz = -rz; //(count5 > 0) ? rz : -rz;
+				if (gAlt < 500000){
+					Di = getMolecularDiffusion(sigmani,Tz,table6["H"].ai,table6["H"].bi);
+					var intH = (720000000000/Di*Math.pow(Tz/999.2356,1+table6["H"].alphai)*Math.pow(Math.E,rz))*(remainder5/1000);
+					for (var a = 1;a<=Math.abs(count5);a++){ //Riemann sum(right for positive, left for negative
+						Zh = (count5 < 0) ? 500000 - (dZ*a) : 500000 + (dZ*a);
+						Tz = getTempH(Zh);
+						Di = getMolecularDiffusion(sigmani,Tz,table6[species].ai,table6[species].bi);
+						intH += (720000000000/Di*Math.pow(Tz/999.2356,1+table6["H"].alphai)*Math.pow(Math.E,rz))*(dZ/1000);
+					}
+					//correct sign! (always below 500000)
+					intH = -intH;
+				//only necessary below 500 km, above it is effectively 0
+				} else {
+					var intH = 0;
+				}
+				n["H"] = (80000000000 - intH)*Math.pow(999.2356/T,1+table6["H"].alphai)*Math.pow(Math.E,-rz);
+				sigmani += n["H"];
+			}
+			// for drawing the number density graph only
+			if (nBOOL) return {"N2":n["N2"],"O":n["O"],"O2":n["O2"],"Ar":n["Ar"],"He":n["He"],"H":n["H"],"sigma":sigmani};
+
+			//k= Rs/NA
+			var p1 = sigmani*(Rs)*T/NA;
+			//density
+			var rho1 = p1*28.9522/(Rs*1000*T);
+			return {"alt":alt,"T":T,"To":0,"p":p1,"rho":rho1,"ga":gAlt,"grav":grav};
 		}
 		
 		function getAtmosphere(alt,To) { //input is geopotential altitude
 			//range check
 			if (alt < -610) alt = -610; //minimum below sea level... per ISA should go to -5000?
-			if (alt > 84852) var atm = getHeterosphere(alt);
+			if (alt > 84852.05) var atm = getHeterosphere(alt); //switch at geopotential alt 86000 m
 			else var atm = getStandardAtmosphere(alt,To);
 			//take relative values and correct density for temperature offset
 			if (atm.rho > 0) atm.rho = atm.rho*atm.T/(atm.T+atm.To);
@@ -411,6 +673,42 @@
 				atm.T = atm.T * (((1-weight)*table8[ind]) + (weight*table8[ind+1]));
 			}
 			return atm;
+		}
+		
+		function getTempH(gAlt) { //get temp for above 86000 meters - heterosphere
+			// if then for each layer to get Temp
+			if (gAlt > 85999.9 && gAlt <= 91000) { //a little extra inclusive
+				return 186.8673;
+			} else if (gAlt > 91000 && gAlt <= 110000) {
+				return 263.1905 + -76.3232 * Math.sqrt(1-Math.pow(((gAlt/1000)-91)/-19.9429,2));
+			} else if (gAlt > 110000 && gAlt <= 120000) {
+				return (gAlt - 110000) * 0.012 + 240;
+			} else if (gAlt > 120000 && gAlt <= 1000000) {
+				return 1000 - ((1000-360)*Math.exp(-0.01875*((gAlt/1000)-120)*((earthRadius+120)/(earthRadius+(gAlt/1000)))));
+			}
+			return null; //error
+		}
+		
+		function getdTdZ(Z) {
+			if (Z >= 86000 && Z <= 91000) return 0;
+			else if (Z > 91000 && Z <= 110000) return -76.3232/-19.9429 * (((Z/1000)-91)/-19.9429) * Math.sqrt(1-Math.pow(((Z/1000)-91)/-19.9429,2));
+			else if (Z > 110000 && Z <= 120000) return 12; // Kelvin per km
+			else if (Z > 120000) return 0.01875*((1000-360)*((earthRadius+120)/(earthRadius+(Z/1000)))*Math.exp(-0.01875*((Z/1000)-120)*((earthRadius+120)/(earthRadius+(Z/1000)))))
+			return null; //error
+		}
+		
+		function getEddyDiffusion(Z) { //equation 7, eddy diffusion coefficient K
+			//86 to 95 km
+			if (Z >= 86000 && Z < 95000) return 120;
+			//95 to 115 km
+			else if (Z >= 95000 && Z < 115000) return 120*Math.pow(Math.E,1-(400/(400-Math.pow(Z/1000-95,2))));
+			//115 to 1000 km
+			else if (Z >= 115000) return 0;
+			return null; //error
+		}
+		
+		function getMolecularDiffusion(sigmani,Tz,ai,bi) {
+			return ai/sigmani*Math.pow(Tz/273.15,bi); //in terms of sigmani so far...
 		}
 		
 		function lapseRate(alt) {
@@ -480,7 +778,6 @@
 			var p0 = ATM1;
 			var rho0 = DENSITY;
 			//adjust rho for temp offset
-			//if (rho && To) rho = rho*(TEMP+To)/TEMP; // FIXED!
 			//getAtmosphere for all alt and To until find adjusted rho, then use rho with no offset in reverse calculation... cheating!
 				var guess = -6;
 				var lastrho = 0;
@@ -490,12 +787,13 @@
 					if (xatm.rho <= rho) {
 						//weighted mean
 						var weight = (xatm.rho - rho)/(xatm.rho - lastrho);
-						var meanT = (xatm.T*weight) + (lastT*(1-weight));
-						rho = rho*(meanT+To)/meanT;
+						var meanT = (xatm.T*(1-weight)) + (lastT*weight); //reverse adjust the rho for no offset
+						rho = rho*meanT/(meanT-To); //get the unadjusted rho for guessing
+						console.log("adjusted" + rho);
 						break;
 					}
 					lastT = xatm.T;
-					lastrho = rho;
+					lastrho = xatm.rho;
 					guess++;
 				}//*/
 			var T0 = TEMP;//TEMP+To;
@@ -535,9 +833,9 @@
 			$("#OUTgalt").text((ATM.ga).toFixed(2));
 			$("#OUTtemp").text((ATM.T).toFixed(2));
 			//fix for no pressure and density values
-			if (ATM.rho === 0) $("#OUTden").text("negligible");
+			if (ATM.rho < 0.00001) $("#OUTden").html((ATM.rho).toExponential(3).split("e-")[0] + "x10<sup>-" + (ATM.rho).toExponential(3).split("e-")[1]+"</sup>");
 			else $("#OUTden").text((ATM.rho).toFixed(7));
-			if (ATM.p === 0) $("#OUTp").text("negligible");
+			if (ATM.p < 0.01) $("#OUTp").html((ATM.p).toExponential(3).split("e-")[0] + "x10<sup>-" + (ATM.p).toExponential(3).split("e-")[1]+"</sup>");
 			else $("#OUTp").text((ATM.p).toFixed(4));
 			$("#OUTgravity").text((ATM.grav).toFixed(5));
 			$("#OUTsos").text((SoS).toFixed(2));
@@ -748,6 +1046,11 @@
 					ctx.lineTo(x*35,900-a);
 				}
 				ctx.stroke();
+				ctx.font = "12px Arial";
+				ctx.fillStyle = "hsla(0,0%,0%,0.7)";
+				ctx.fillText("Temperature,",10.5,834.5);
+				ctx.fillText("Density and Pressure",10.5,854.5);
+				ctx.fillText("vs. Geopotential Altitude",10.5,874.5);
 			//draw the current altitude
 			if (Altitude && Altitude != 0){
 				var a = Altitude/100 + 0.5;
@@ -873,7 +1176,7 @@
 				ctx2.strokeStyle = "hsla(0,0%,50%,0.25)";
 				ctx2.setLineDash([5,2]);
 				//homosphere 0 - 91km
-				ctx2.fillText("Homosphere",15,475);
+				ctx2.fillText("Homosphere",15,474.5);
 				ctx2.beginPath();
 				ctx2.moveTo(0,454.5);
 				ctx2.lineTo(86,454.5);
@@ -881,16 +1184,19 @@
 				//thermosphere 91-500 km
 				ctx2.fillStyle = "hsla(0,0%,70%,1.0)";
 				ctx2.strokeStyle = "hsla(0,0%,100%,0.25)";
-				ctx2.fillText("Thermosphere",15,325);
+				ctx2.fillText("Thermosphere",15,324.5);
 				ctx2.beginPath();
 				ctx2.moveTo(0,249.5);
 				ctx2.lineTo(86,249.5);
 				ctx2.stroke();
-				ctx2.fillText("Exosphere",15,100);
+				ctx2.fillText("Exosphere",15,99.5);
+				ctx2.setLineDash([]);
+				ctx2.font = "12px Arial";
+				ctx2.fillStyle = "hsla(0,0%,0%,0.7)";
+				ctx2.fillText("Temperature vs. Geometric Altitude",800.5,474.5);
 			// draw altitude line
 			if (Altitude && Altitude > 90000){
 				var a = Altitude/2000 + 0.5;
-				ctx2.setLineDash([]);
 				ctx2.strokeStyle = "hsla(0,0%,100%,0.1)";
 				ctx2.lineWidth = 12;
 				ctx2.beginPath();
@@ -923,6 +1229,89 @@
 				ctx2.lineTo(1000,500-a);
 				ctx2.stroke();
 				ctx2.setLineDash([]);
+			}
+			//draw the number density curves and grid
+			if (drawNDensity){
+				var gradient2 = ctx2.createLinearGradient(410,0,610,0);
+					gradient2.addColorStop("0","hsla(0,0%,100%,1.0)");
+					gradient2.addColorStop("1.0","hsla(0,0%,100%,0)");
+				ctx2.fillStyle = gradient2;
+				ctx2.fillRect(0,0,610,610);
+				//ctx2.clearRect(0,0,500,500);
+				//grid lines for temperature
+				ctx2.fillStyle = "hsla(0,0%,0%,0.7)";
+				ctx2.strokeStyle = "hsla(0,0%,0%,0.7)";
+				for (var l=0;l<=20;l++){
+					ctx2.beginPath();
+					ctx2.moveTo(l*20+20.5,500);
+					ctx2.lineTo(l*20+20.5,496-((l%2)*2));
+					ctx2.stroke();
+					var text = l+1;
+					if (l%2 === 0) continue;
+					ctx2.font = "9px Arial";
+					ctx2.fillText(10,l*20+19.5,493);
+					ctx2.font = "7px Arial";
+					ctx2.fillText(text,l*20+29.5,490);
+				}
+					ctx2.font = "9px Arial";
+					ctx2.fillText("m",55.5,493);
+					ctx2.font = "7px Arial";
+					ctx2.fillText(-3,63.5,490);
+				//N2 = green, O = red, O2 = blue, Ar = purple, He = lightblue, H = gold, all = black
+				var nColor = {"N2":"hsla(150,70%,50%,0.75)","O":"hsla(0,100%,50%,0.75)","O2":"hsla(240,100%,50%,0.75)","Ar":"hsla(280,100%,50%,0.75)","He":"hsla(200,70%,50%,0.75)","H":"hsla(40,70%,50%,0.75)","sigma":"hsla(0,0%,0%,0.75)"};
+				for (color in nColor){
+					ctx2.beginPath();
+					ctx2.strokeStyle = nColor[color];
+					ctx2.moveTo(Math.log10(nArray[color][0])*20,457);
+					for (var c = 1;c<=456;c++){
+						if (nArray[color][c] === 0) continue;
+						else if (nArray[color][c] <= 10) ctx2.lineTo(Math.pow(Math.E,Math.log10(nArray[color][c])-1)*20,-c+457); // off the log scale, changing back to exponential
+						//else if (nArray[color][c] <= 10) ctx2.lineTo(1/(2-Math.log10(nArray[color][c]))*20,-c+457); //stop if the value is below 1 (off the log scale)
+						else ctx2.lineTo(Math.log10(nArray[color][c])*20,-c+457);
+					}
+					ctx2.stroke();
+				}
+				//draw boundary lines and altitude grid
+				ctx2.font = "9px Arial";
+				for (var a=0;a<=8;a++){
+					ctx2.beginPath();
+					ctx2.moveTo(0,a*50+49.5);
+					ctx2.lineTo(5,a*50+49.5);
+					ctx2.stroke();
+					var text = (a+1)*100;
+					if (a === 0) text += " km";
+					ctx2.fillText(text,2.5,446.5 - (a*50));
+				}
+				ctx2.beginPath();
+				ctx2.moveTo(440,499.5);
+				ctx2.lineTo(0.5,499.5);
+				ctx2.lineTo(0.5,25);
+				ctx2.stroke();
+				//draw the key
+				//N2 = green, O = red, O2 = blue, Ar = purple, He = lightblue, H = gold, all = black
+				var yh = 0;
+				ctx2.lineWidth = 2;
+				for (name in nColor){
+					ctx2.strokeStyle = nColor[name];
+					yh -= 20;
+					if (name === "sigma") name = "Total";
+					ctx2.fillText(name,60.5,292.5 - yh);
+					ctx2.beginPath();
+					ctx2.moveTo(94.5,290 - yh);
+					ctx2.lineTo(114.5,290 - yh);
+					ctx2.stroke();
+				}
+				ctx2.lineWidth = 1;
+				ctx2.beginPath();
+				ctx2.moveTo(49.5,289.5);
+				ctx2.lineTo(49.5,449.5);
+				ctx2.lineTo(129.5,449.5);
+				ctx2.lineTo(129.5,289.5);
+				ctx2.lineTo(49.5,289.5);
+				ctx2.stroke();
+				ctx2.font = "12px Arial";
+				ctx2.fillText("Number Density vs. Geometric Altitude",50.5,474.5);
+				
 			}
 		}
 		
@@ -1024,10 +1413,9 @@
 </head>
 <body>
 <div class="left calc">
-	<h2>ISA Calculator</h2>
+	<h2 id="titleInfo"><a class="clickable">ISA Calculator</a></h2>
 	<p>U.S. Standard Atmosphere Calculator (1976)
 	<div class="input-sec">
-	<h3>INPUT</h3>
 		<form>
 			Temperature offset: (Kelvin or Celsius)<br />
 			<input type="number" id="tempOffset" value="0">
@@ -1042,10 +1430,7 @@
 				<option value="km">kilometers</option>
 				<option value="ft">feet</option>
 			</select><br />
-			... or ... <br /><!--
-			Temperature: (Kelvin)<br />
-			<input type="number" id="temp" class="input"><br />
-			<br />... or ... -->
+			<div class="center">... or ...</div>
 			Density: (kg/cubic meter)<br />
 			<input type="number" id="density" class="input"><br />
 			Pressure: (Pascals)<br />
@@ -1053,7 +1438,6 @@
 		</form>
 	</div>
 	<div class="output-sec">
-	<h3>OUTPUT</h3>
 			<h4>Altitude : <span id="OUTalt"></span>
 				<select id="OUTaltU" class="Units right">
 					<option value="m">meters</option>
@@ -1086,20 +1470,39 @@
 					<option value="atm">atmosphere</option>
 					<option value="psi">psi</option>
 				</select></h4>
-			<p>Gas constant for dry air R = <span class="Rc">287.053</span> J/kg K
-			<br />Radius of Earth = <span id="ERc">6356.766</span> kilometers
+			<p class="spacing">Gas constant for dry air R = <a class="clickable"><span class="Rc">287.052</span></a> J/kg K
+			<br />Radius of Earth = <a class="clickable"><span id="ERc">6356.766</span></a> kilometers
 			<br />Gravity at that altitude g<sub>alt</sub> = <span id="OUTgravity"></span> m/s<sup>2</sup>
 			<br />Speed of sound = <span id="OUTsos"></span> m/s
-	
 	</div>
+	<button id="numDensity" class="left">Number Density</button>
+	<button id="log" class="right">log10 scale</button>
+	<canvas id="graph2" width="1000" height="500">Your browser does not support HTML 5... loser!</canvas>
 	<p>Copyright &copy; 2015 Trevor Gast
 	<br />GNU General Public License
 	<br /><a href="http://codeandcompose.com">codeandcompose.com</a>
-	<canvas id="graph2" width="1000" height="500">Your browser does not support HTML 5... loser!</canvas>
 </div>
 <div class="left">
 	<canvas id="graph" width="500" height="960">Your browser does not support HTML 5... loser!</canvas>
-	<br /><button id="log">log10 scale</button>
+</div>
+<div id="Infodiv">
+	<h3>About this calculator</h3>
+	This International Standard Atmosphere calculator is based on the <a href="http://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19770009539.pdf">U.S. Standard Atmosphere, 1976</a> document published by the NOAA, NASA and USAF.
+	<h3>Features</h3>
+	<ul><li>Absolute accuracy, including molecular scale temperature between 80 and 86 km.
+	</li><li>Riemann sum approximation of integrals for pressure and density above 86000 m. No lookup tables!
+	</li><li>Clickable altitude graphs.
+	</li><li>Number Density of individual species graph.
+	</li><li>Switch from linear to logarithmic scale for pressure and density curves.
+	</li></ul>
+	<h3>Calculations</h3>
+	<ul><li>Strict adherence to the equations and constants is maintained throughout this calculator, with the exception of a few typographical corrections (e.g. number density for He is 7.5817x10<sup>14</sup>).
+	</li><li>Some constants are alterable, or improved for accuracy based on updated empirical observations. The effect on output is minimal.
+	</li><li>Calculations of pressure and density above 86000 m' are derived using a right Riemann sum to approximate the integrals in equations (35),(38),(39) and (40). dZ is set to 100 meters, but can be adjusted.
+	</li><li>When entering density or pressure with a temperature offset, the resulting altitude is approximate. No calculation is made above 90000 m.
+	</li></ul><br />
+	<br />Copyright &copy; 2015 Trevor Gast : <a href="http://codeandcompose.com">codeandcompose.com</a>
+	<br /><a href="http://www.gnu.org/licenses/">GNU General Public License</a>
 </div>
 </body>
 </html>
